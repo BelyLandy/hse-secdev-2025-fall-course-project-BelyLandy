@@ -76,9 +76,11 @@ def list_items(
     label: str | None = None,
 ):
     with session_scope() as db:
-        q = select(Item).where(
-            (Item.owner_id == user["id"]) | (user["role"] == "admin")
-        )
+        q = select(Item)  # <-- инициализация запроса
+
+        if user["role"] != "admin":
+            q = q.where(Item.owner_id == user["id"])
+
         if label:
             q = q.where(func.instr(Item.labels, label) > 0)
 

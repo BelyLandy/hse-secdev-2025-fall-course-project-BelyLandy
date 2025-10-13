@@ -27,18 +27,18 @@ Swagger: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
 Доменные:
 
-* `POST   /api/v1/items` — создать
+* `POST   /api/v1/items` - создать
   Заголовки: `X-User-Id: <user>` (обязателен), опционально `X-User-Role: admin`
-* `GET    /api/v1/items/{id}` — получить (владелец или `admin`)
-* `PATCH  /api/v1/items/{id}` — обновить (владелец или `admin`)
-* `DELETE /api/v1/items/{id}` — удалить (владелец или `admin`)
-* `GET    /api/v1/items?limit=&offset=&sort=&label=` — список
+* `GET    /api/v1/items/{id}` - получить (владелец или `admin`)
+* `PATCH  /api/v1/items/{id}` - обновить (владелец или `admin`)
+* `DELETE /api/v1/items/{id}` - удалить (владелец или `admin`)
+* `GET    /api/v1/items?limit=&offset=&sort=&label=` - список
   `sort ∈ {score,-score,created_at,-created_at,impact,-impact,effort,-effort}`
 
 Служебные (для базовых проверок шаблона):
 
-* `GET  /items/{id}` — возвращает `404` в нужном формате
-* `POST /items?name=...` — проверка валидации query
+* `GET  /items/{id}` - возвращает `404` в нужном формате
+* `POST /items?name=...` - проверка валидации query
 
 Здоровье:
 
@@ -118,6 +118,13 @@ docker run --rm -p 8000:8000 idea-backlog
 # либо
 docker compose up --build
 ```
+
+## Процессы
+
+* Для ревью используется чек-лист: [docs/REVIEW_CHECKLIST.md](docs/REVIEW_CHECKLIST.md)
+* В проекте настроен `.github/CODEOWNERS` - ревьюеры добавляются автоматически при изменениях в коде.
+
+---
 
 ## Примечания
 
