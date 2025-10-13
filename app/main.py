@@ -1,57 +1,71 @@
-from fastapi import FastAPI, HTTPException, Request
+from __future__ import annotations
+
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
-app = FastAPI(title="SecDev Course App", version="0.1.0")
+from .api.routers import items as items_router
+from .db import Base, engine, session_scope
+
+app = FastAPI(title="Idea Backlog (MVP)", version="0.1.0")
+
+Base.metadata.create_all(bind=engine)
+
+app.include_router(items_router.router)
 
 
-class ApiError(Exception):
-    def __init__(self, code: str, message: str, status: int = 400):
-        self.code = code
-        self.message = message
-        self.status = status
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 404:
+        return JSONResponse(status_code=404, content={"error": {"code": "not_found"}})
+
+    payload = exc.detail if isinstance(exc.detail, dict) else {"detail": exc.detail}
+    return JSONResponse(status_code=exc.status_code, content=payload)
 
 
-@app.exception_handler(ApiError)
-async def api_error_handler(request: Request, exc: ApiError):
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    details = []
+    for e in exc.errors():
+        item = dict(e)
+        if "ctx" in item and isinstance(item["ctx"], dict) and "error" in item["ctx"]:
+            item["ctx"] = {**item["ctx"], "error": str(item["ctx"]["error"])}
+        details.append(item)
+
     return JSONResponse(
-        status_code=exc.status,
-        content={"error": {"code": exc.code, "message": exc.message}},
+        status_code=422,
+        content={"error": {"code": "validation_error", "details": details}},
     )
 
 
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
-    # Normalize FastAPI HTTPException into our error envelope
-    detail = exc.detail if isinstance(exc.detail, str) else "http_error"
+@app.get("/items/{item_id}")
+def compat_get_item(item_id: int):
+    raise HTTPException(status_code=404)
+
+
+@app.post("/items")
+def compat_create_item(name: str = Query(..., min_length=1)):
+    return {"ok": True, "name": name}
+
+
+@app.exception_handler(Exception)
+async def default_handler(request: Request, exc: Exception):
+    if isinstance(exc, HTTPException):
+        raise exc
     return JSONResponse(
-        status_code=exc.status_code,
-        content={"error": {"code": "http_error", "message": detail}},
+        status_code=500,
+        content={
+            "code": "INTERNAL_ERROR",
+            "message": "Unexpected error",
+            "details": {},
+        },
     )
 
 
 @app.get("/health")
 def health():
+    with session_scope() as db:
+        db.execute(text("SELECT 1"))
     return {"status": "ok"}
-
-
-# Example minimal entity (for tests/demo)
-_DB = {"items": []}
-
-
-@app.post("/items")
-def create_item(name: str):
-    if not name or len(name) > 100:
-        raise ApiError(
-            code="validation_error", message="name must be 1..100 chars", status=422
-        )
-    item = {"id": len(_DB["items"]) + 1, "name": name}
-    _DB["items"].append(item)
-    return item
-
-
-@app.get("/items/{item_id}")
-def get_item(item_id: int):
-    for it in _DB["items"]:
-        if it["id"] == item_id:
-            return it
-    raise ApiError(code="not_found", message="item not found", status=404)
