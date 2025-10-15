@@ -6,6 +6,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.utils.rfc7807 import problem
+
 from .api.routers import items as items_router
 from .db import Base, engine, session_scope
 
@@ -69,3 +71,8 @@ def health():
     with session_scope() as db:
         db.execute(text("SELECT 1"))
     return {"status": "ok"}
+
+
+@app.exception_handler(ValueError)
+async def value_error_handler(_, exc: ValueError):
+    return problem(400, "Bad Request", str(exc), type_="about:blank#value-error")
