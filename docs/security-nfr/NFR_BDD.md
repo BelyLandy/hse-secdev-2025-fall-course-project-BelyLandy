@@ -1,4 +1,4 @@
-# NFR_BDD.md — Приёмка в формате Gherkin
+# NFR_BDD.md
 
 Feature: Обязательный X-User-Id (NFR-01)
   Scenario: Запрос без заголовка отклоняется
@@ -30,3 +30,9 @@ Feature: Валидация полей (NFR-03)
     When клиент отправляет impact=0 или effort=11
     Then статус 422
     And тело содержит error.code = "validation_error"
+
+Feature: Политики исходящих HTTP (NFR-11)
+  Scenario: Таймаут маппится в RFC7807
+    Given зависание внешнего API
+    When сервис вызывает external endpoint
+    Then клиент получает JSON RFC7807 с title="Upstream timeout"
