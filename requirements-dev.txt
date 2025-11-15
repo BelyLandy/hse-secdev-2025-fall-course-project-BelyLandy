@@ -1,9 +1,7 @@
 -r requirements.txt
-pre_commit>=3.7,<5
-PyYAML>=6,<7
-virtualenv>=20,<21
-nodeenv>=1.9,<2
-cfgv>=3,<4
-identify>=2,<3
-filelock>=3,<4
-platformdirs>=4,<5
+ruff==0.6.9
+black==24.10.0
+isort==5.13.2
+pytest==8.3.3
+pre-commit==4.0.1
+pip-audit==2.7.3
