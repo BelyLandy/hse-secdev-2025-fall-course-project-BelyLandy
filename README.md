@@ -1,4 +1,3 @@
-````markdown
 # Idea Backlog
 
 Небольшой сервис для ведения каталога идей: CRUD, сортировка по `score = impact / effort`, доступ только владельцу (или роли `admin`).
@@ -26,9 +25,10 @@ pre-commit install
 # Запуск
 uvicorn app.main:app --reload
 # Swagger: http://127.0.0.1:8000/docs
-````
+```
 
-База: файл `app.db` в корне проекта.
+База локально: файл `app.db` в корне проекта.
+В контейнере: файл БД монтируется в volume по пути `/data/app.db`.
 
 ---
 
@@ -50,8 +50,8 @@ uvicorn app.main:app --reload
 * `PATCH  /api/v1/items/{id}` - обновить (владелец или `admin`)
 * `DELETE /api/v1/items/{id}` - удалить (владелец или `admin`)
 * `GET    /api/v1/items?limit=&offset=&sort=&label=` - список
-  где `sort ∈ {score,-score,created_at,-created_at,impact,-impact,effort,-effort}`
-  `label` - необязательный фильтр; длина метки ≤ 24 символов.
+  где `sort ∈ {score,-score,created_at,-created_at,impact,-impact,effort,-effort}`,
+  `label` - необязательный фильтр; длина метки <= 24 символов.
 
 Служебные:
 
@@ -99,7 +99,7 @@ curl -i -H "X-User-Id: admin" -H "X-User-Role: admin" \
   "http://127.0.0.1:8000/api/v1/items/$ID"
 ```
 
-PowerShell версия получения ID:
+PowerShell-версия получения ID:
 
 ```powershell
 $ID = (curl -s -Method POST http://127.0.0.1:8000/api/v1/items `
@@ -164,8 +164,6 @@ curl -i -H "X-User-Id: u1" \
 }
 ```
 
-> Примечание: мы намеренно не раскрываем внутренние детали; есть `correlation_id` для трассировки в логах.
-
 ---
 
 ## Тесты и качество
@@ -191,32 +189,173 @@ CI (GitHub Actions): установка зависимостей -> ruff/black/i
 
 ---
 
-## Контейнеризация
+## Контейнеризация (P07)
 
+В проекте настроены безопасные образы и запуск:
+
+### Что сделано
+- **Multi-stage Dockerfile** на `python:3.12-slim`; финальный образ без dev-утилит.
+- Приложение работает под **непривилегированным пользователем** `app` (uid/gid 999).
+- **read_only** root-FS; запись разрешена только в:
+  - volume `/data` (для БД),
+  - tmpfs `/tmp`, `/run`.
+- **HEALTHCHECK** опрашивает `GET /health`.
+- Усиление: `cap_drop: [ALL]`, `security_opt: ["no-new-privileges:true"]`, `ulimits: { nofile: 4096 }`.
+
+### Переменные окружения
+- `DB_PATH` - путь к базе (по умолчанию `/data/app.db` внутри контейнера).
+  В compose это уже задано: `APP_DB_PATH=/data/app.db` или `DB_PATH=/data/app.db` (в зависимости от кода).
+
+### Сборка и запуск
 ```bash
-docker build -t idea-backlog .
-docker run --rm -p 8000:8000 idea-backlog
-# или
-docker compose up --build
+docker compose build
+docker compose up -d
+
+# здоровье должно стать healthy
+docker inspect -f '{{.State.Health.Status}}' idea
+```
+
+### Быстрые проверки харднинга
+```bash
+# 1) health
+curl -s http://127.0.0.1:8000/health
+
+# 2) процесс не под root
+docker exec idea sh -lc 'id'            # uid=999(app) gid=999(app)
+
+# 3) root-FS read-only, но /data writable
+docker exec idea sh -lc 'test -w / && echo rw || echo ro'         # ro
+docker exec idea sh -lc 'test -w /data && echo data-writable'     # data-writable
+
+# 4) security опции и capabilities
+docker inspect idea --format '{{json .HostConfig.SecurityOpt}}' | python -m json.tool
+docker inspect idea --format '{{json .HostConfig.CapDrop}}' | python -m json.tool
+```
+
+### Проверка сохранности данных (volume `/data`)
+```bash
+# создать
+curl -s -X POST http://127.0.0.1:8000/api/v1/items \
+  -H "Content-Type: application/json" -H "X-User-Id: demo" \
+  -d '{"title":"VOL","impact":8,"effort":2}'
+
+# убедиться, что создалось
+curl -s -H "X-User-Id: demo" "http://127.0.0.1:8000/api/v1/items?sort=-created_at"
+
+# перезапуск и повторная проверка - запись должна сохраниться
+docker compose restart
+curl -s -H "X-User-Id: demo" "http://127.0.0.1:8000/api/v1/items?sort=-created_at"
 ```
 
 ---
 
-## Security-контроли
+## Линтер Dockerfile и скан уязвимостей
 
-В проекте реализованы и тестами покрыты ключевые практики безопасного кодирования:
+### hadolint (Dockerfile)
+```bash
+docker run --rm -i hadolint/hadolint < Dockerfile
+# если замечаний нет то пустой вывод
+```
 
-* **Строгая валидация входа**: запрет лишних полей (`extra="forbid"`), длины, типы, в т.ч. для query.
-* **RFC 7807**: структурированные ошибки с `correlation_id`, без утечек внутренностей.
-* **Безопасная работа с файлами**: magic bytes, лимиты размера, канонизация пути, UUID-имя, запрет симлинков (тесты включены).
-* **Безопасный HTTP-клиент**: таймауты по умолчанию, ретраи с экспоненциальной паузой, ограничение попыток.
-* **SQL**: доступ через ORM, без ручной конкатенации.
+### Trivy (образ)
+
+```bash
+docker save idea-backlog:local -o idea-backlog.tar
+
+# Git Bash:
+docker run --rm -v "$(pwd)":/work -w /work \
+  aquasec/trivy:0.56.2 \
+  image --input /work/idea-backlog.tar \
+  --severity HIGH,CRITICAL --ignore-unfixed \
+  --format table --output trivy.txt
+
+# PowerShell:
+docker run --rm -v ${PWD}:/work -w /work `
+  aquasec/trivy:0.56.2 `
+  image --input /work/idea-backlog.tar `
+  --severity HIGH,CRITICAL --ignore-unfixed `
+  --format table --output trivy.txt
+```
+
+---
+
+## Мини-smoke для контейнера
+
+```bash
+# здоровье
+curl -s http://127.0.0.1:8000/health
+
+# CRUD под непривилегированным пользователем
+curl -s -X POST http://127.0.0.1:8000/api/v1/items \
+  -H "Content-Type: application/json" -H "X-User-Id: demo" \
+  -d '{"title":"A","impact":5,"effort":2}'
+curl -s -H "X-User-Id: demo" "http://127.0.0.1:8000/api/v1/items?sort=-score"
+
+# owner-only и роль admin - см. раздел «Примеры (curl)»
+```
+
+---
+
+## Короткий пример CI (GitHub Actions)
+
+`.github/workflows/ci.yml` - добавленные шаги для hadolint и Trivy:
+
+```yaml
+name: CI
+on: [push, pull_request]
+
+jobs:
+  build-test-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+          pip install ruff black isort pytest
+
+      - name: Lint & Test
+        run: |
+          ruff check .
+          black --check .
+          isort --check-only .
+          pytest -q
+
+      - name: Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ./Dockerfile
+
+  image-security:
+    runs-on: ubuntu-latest
+    needs: build-test-lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t idea-backlog:local .
+
+      - name: Trivy scan (HIGH,CRITICAL, ignore-unfixed)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: "idea-backlog:local"
+          format: "table"
+          severity: "HIGH,CRITICAL"
+          ignore-unfixed: true
+          exit-code: "0"
+```
 
 ---
 
 ## Процессы
 
-* Чек-лист ревью: [docs/REVIEW_CHECKLIST.md](docs/REVIEW_CHECKLIST.md)
+* Чек-лист ревью: `docs/REVIEW_CHECKLIST.md`
 * Автоподписанты: `.github/CODEOWNERS`
 * CI-workflow: `.github/workflows/ci.yml`
 
@@ -224,10 +363,9 @@ docker compose up --build
 
 ## Примечания
 
-* Поля item: `title (1..120)`, `impact (1..10)`, `effort (1..10)`, `notes?`, `labels[]` (≤ 10 штук, длина каждой ≤ 24).
-* Для очистки БД - удалите файл `app.db`.
-
-См. также: `SECURITY.md`, `.pre-commit-config.yaml`, `.github/workflows/ci.yml`.
+* Поля item: `title (1..120)`, `impact (1..10)`, `effort (1..10)`, `notes?`, `labels[]` (<= 10 штук, длина каждой <= 24).
+* Для очистки локальной БД - удалите файл `app.db`.
+* В контейнере данные хранятся в Docker volume `appdb` (путь `/data/app.db`), рестарты не стирают данные.
 
 ---
 

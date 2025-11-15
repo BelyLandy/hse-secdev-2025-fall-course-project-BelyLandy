@@ -1,8 +1,38 @@
 services:
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: idea-backlog:local
+    container_name: idea
     ports:
       - "8000:8000"
     environment:
-      - PYTHONUNBUFFERED=1
-    profiles: ["dev"]
+      - APP_DB_PATH=/data/app.db
+
+    read_only: true
+
+    volumes:
+      - appdb:/data
+
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+      - /run:rw,noexec,nosuid,nodev,size=64m
+
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ulimits:
+      nofile: 4096
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request, socket; socket.setdefaulttimeout(2); urllib.request.urlopen('http://127.0.0.1:8000/health').read()"]
+      interval: 30s
+      timeout: 3s
+      start_period: 20s
+      retries: 5
+
+volumes:
+  appdb: {}
