@@ -4,16 +4,22 @@ services:
       context: .
     image: idea-backlog:local
     container_name: idea
+
     ports:
       - "8000:8000"
+
     environment:
-      - APP_DB_PATH=/data/app.db
-    user: "1000:1000"
+      - DB_PATH=/data/app.db
+
+    user: "999:999"
+
     read_only: true
+
     volumes:
-      - appdb:/data
-      - tmpfs:/tmp
+      - appdb:/data:rw
+
     tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
       - /run:rw,noexec,nosuid,nodev,size=64m
 
     security_opt:
@@ -24,8 +30,10 @@ services:
 
     cap_drop:
       - ALL
+
     ulimits:
       nofile: 4096
+
     restart: unless-stopped
 
     healthcheck:
@@ -37,5 +45,3 @@ services:
 
 volumes:
   appdb:
-  tmpfs:
-    driver: local
