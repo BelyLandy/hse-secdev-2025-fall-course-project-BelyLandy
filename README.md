@@ -5,6 +5,8 @@
 
 ---
 
+Бейдж - [![CI](https://github.com/BelyLandy/Devyatov-hse-secdev-2025-course-project/actions/workflows/ci.yml/badge.svg)](https://github.com/BelyLandy/Devyatov-hse-secdev-2025-course-project/actions/workflows/ci.yml)
+
 ## Быстрый старт (локально)
 
 ```bash

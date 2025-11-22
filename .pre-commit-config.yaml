@@ -1,3 +1,13 @@
+exclude: |
+  (?x)^(
+    reports/
+    | coverage/
+    | \.pytest_cache/
+    | \.mypy_cache/
+    | \.venv/
+    | idea-backlog\.tar
+  )
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -8,14 +18,17 @@ repos:
       - id: check-json
       - id: check-yaml
       - id: mixed-line-ending
+
   - repo: https://github.com/psf/black
     rev: 24.8.0
     hooks:
       - id: black
+
   - repo: https://github.com/pycqa/isort
     rev: 5.13.2
     hooks:
       - id: isort
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.6.9
     hooks:
