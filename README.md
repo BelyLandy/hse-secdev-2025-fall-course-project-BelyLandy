@@ -402,3 +402,7 @@ curl -i -H "X-User-Id: u1" "http://127.0.0.1:8000/api/v1/items?label=xxxxxxxxxxx
 curl -i http://127.0.0.1:8000/items/123
 curl -s -X POST "http://127.0.0.1:8000/items?name=test"
 ```
+[![CI](https://github.com/BelyLandy/Devyatov-hse-secdev-2025-course-project/actions/workflows/ci.yml/badge.svg)](https://github.com/BelyLandy/Devyatov-hse-secdev-2025-course-project/actions/workflows/ci.yml)
+
+
+
