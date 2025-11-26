@@ -23,6 +23,13 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ['3.10', '3.11', '3.12']
 
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'prod' ||
+                (startsWith(github.ref, 'refs/heads/release/') && 'stage' || 'dev') }}
+    env:
+      APP_ENV: ${{ github.ref == 'refs/heads/main' && 'prod' ||
+                   (startsWith(github.ref, 'refs/heads/release/') && 'stage' || 'dev') }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -69,10 +76,19 @@ jobs:
         run: |
           pre-commit run --files $(git ls-files)
 
+      - name: Show environment (debug)
+        shell: bash
+        run: |
+          echo "Running in environment: $APP_ENV"
+
       - name: Pytest (JUnit + coverage)
         shell: bash
         env:
-          DB_PATH: ./app.db
+          DB_PATH:    ${{ vars.DB_PATH }}
+          LOG_LEVEL:  ${{ vars.LOG_LEVEL }}
+          APP_NAME:   ${{ vars.APP_NAME }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          DB_URL:     ${{ secrets.DB_URL }}
         run: |
           mkdir -p reports
           pytest -q --maxfail=1 --disable-warnings \
@@ -90,6 +106,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: tests
+
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'prod' ||
+                (startsWith(github.ref, 'refs/heads/release/') && 'stage' || 'dev') }}
+    env:
+      APP_ENV: ${{ github.ref == 'refs/heads/main' && 'prod' ||
+                   (startsWith(github.ref, 'refs/heads/release/') && 'stage' || 'dev') }}
+
     steps:
       - uses: actions/checkout@v4
 
