@@ -437,7 +437,7 @@ EVIDENCE/
 
 ### waivers
 
-Файл `policy/waivers.yml`. 
+Файл `policy/waivers.yml`.
 
 Пример:
 
