@@ -1,6 +1,7 @@
 exclude: |
   (?x)^(
     reports/
+    | EVIDENCE/
     | coverage/
     | \.pytest_cache/
     | \.mypy_cache/
