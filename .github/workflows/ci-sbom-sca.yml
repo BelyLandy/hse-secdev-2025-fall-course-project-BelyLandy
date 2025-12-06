@@ -1,0 +1,186 @@
+name: Security - SBOM & SCA
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "**/*.py"
+      - "requirements*.txt"
+      - "Dockerfile"
+      - ".github/workflows/ci-sbom-sca.yml"
+      - "policy/waivers.yml"
+  pull_request:
+    paths:
+      - "**/*.py"
+      - "requirements*.txt"
+      - "Dockerfile"
+      - ".github/workflows/ci-sbom-sca.yml"
+      - "policy/waivers.yml"
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: sbom-sca-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sbom_sca:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SYFT_VERSION: "1.38.0"
+      GRYPE_VERSION: "0.104.1"
+      APP_ENV: ${{ github.ref == 'refs/heads/main' && 'prod' ||
+                   (startsWith(github.ref, 'refs/heads/release/') && 'stage' || 'dev') }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure evidence dirs
+        run: mkdir -p EVIDENCE/P09
+
+      - name: Install jq & yq (for waivers and summaries)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Generate SBOM (Syft CycloneDX JSON)
+        run: |
+          docker run --rm \
+            -v "$PWD:/work" -w /work \
+            anchore/syft:v${SYFT_VERSION} \
+            . -o cyclonedx-json=EVIDENCE/P09/sbom.json
+
+      - name: SCA Scan (Grype -> JSON)
+        run: |
+          docker run --rm \
+            -v "$PWD:/work" -w /work \
+            anchore/grype:v${GRYPE_VERSION} \
+            sbom:/work/EVIDENCE/P09/sbom.json -o json \
+            > EVIDENCE/P09/sca_report.json || true
+
+      - name: Load waivers policy (policy/waivers.yml -> waivers.json)
+        run: |
+          if [ -f policy/waivers.yml ]; then
+            yq -o=json '.waivers // []' policy/waivers.yml > EVIDENCE/P09/waivers.json
+          else
+            echo '[]' > EVIDENCE/P09/waivers.json
+          fi
+          echo "APP_ENV=${APP_ENV}"
+          echo "Waivers loaded:"
+          cat EVIDENCE/P09/waivers.json
+
+      - name: Apply waivers to SCA report (filtered JSON)
+        env:
+          ENV_CTX: ${{ env.APP_ENV }}
+        run: |
+          jq --arg env "$ENV_CTX" --slurpfile WS EVIDENCE/P09/waivers.json '
+            def waived($m):
+              any($WS[0][]?;
+                  (.cve? and .cve == ($m.vulnerability.id // "")) and
+                  (.package? | not or .package == ($m.artifact.name // "")) and
+                  (.envs?    | not or index($env)) and
+                  (.until?   | not or (now <= (.until | fromdateiso8601)))
+              );
+            .matches |= map(select(waived(.) | not))
+          ' EVIDENCE/P09/sca_report.json > EVIDENCE/P09/sca_report.filtered.json
+
+      - name: Build SCA severity summary (Markdown, after waivers)
+        run: |
+          R=EVIDENCE/P09/sca_report.filtered.json
+          CRIT=$(jq '[.matches[].vulnerability | select(.severity=="Critical")] | length' "$R")
+          HIGH=$(jq '[.matches[].vulnerability | select(.severity=="High")]     | length' "$R")
+          MED=$( jq '[.matches[].vulnerability | select(.severity=="Medium")]   | length' "$R")
+          LOW=$( jq '[.matches[].vulnerability | select(.severity=="Low")]      | length' "$R")
+          {
+            echo "# SCA summary (after waivers)"
+            echo
+            echo "- Critical: ${CRIT}"
+            echo "- High: ${HIGH}"
+            echo "- Medium: ${MED}"
+            echo "- Low: ${LOW}"
+            echo
+            echo "Env: ${APP_ENV}"
+            echo "Commit: \`${GITHUB_SHA}\`"
+            echo "Tools: Syft v${SYFT_VERSION}, Grype v${GRYPE_VERSION}"
+          } > EVIDENCE/P09/sca_summary.md
+          cat EVIDENCE/P09/sca_summary.md
+
+      - name: Enforce threshold on stage/prod (fail on Critical/High > 0)
+        if: ${{ env.APP_ENV != 'dev' }}
+        run: |
+          R=EVIDENCE/P09/sca_report.filtered.json
+          CRIT=$(jq '[.matches[].vulnerability | select(.severity=="Critical")] | length' "$R")
+          HIGH=$(jq '[.matches[].vulnerability | select(.severity=="High")]     | length' "$R")
+          echo "Remaining Critical=${CRIT}, High=${HIGH}"
+          test $((CRIT + HIGH)) -eq 0 || { echo "Blocking due to Critical/High"; exit 1; }
+
+      - name: Write evidence README
+        run: |
+          {
+            echo "# P09 Evidence"
+            echo
+            echo "- sbom.json - SBOM (CycloneDX)."
+            echo "- sca_report.json - SCA до waivers."
+            echo "- sca_report.filtered.json - SCA после применения waivers."
+            echo "- sca_summary.md - сводка по severity."
+            echo "- waivers.json - нормализованные исключения из policy/waivers.yml."
+            echo
+            echo "Commit: ${GITHUB_SHA}"
+            echo "Env: ${APP_ENV}"
+          } > EVIDENCE/P09/README.md
+
+      - name: Stamp evidence with commit SHA
+        run: |
+          short="${GITHUB_SHA::7}"
+          for f in sbom.json sca_report.json sca_report.filtered.json sca_summary.md README.md; do
+            if [ -s "EVIDENCE/P09/$f" ]; then
+              base="${f%.*}"
+              ext="${f##*.}"
+              cp "EVIDENCE/P09/$f" "EVIDENCE/P09/${base}-${short}.${ext}"
+            fi
+          done
+
+      - name: Write SBOM metadata
+        run: |
+          cat > EVIDENCE/P09/sbom.meta.json <<EOF
+          {
+            "commit": "${GITHUB_SHA}",
+            "syft_version": "${SYFT_VERSION}",
+            "grype_version": "${GRYPE_VERSION}",
+            "generated_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          }
+          EOF
+
+      - name: Job summary
+        run: |
+          echo "## SBOM & SCA" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: [${GITHUB_SHA::7}]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Env: \`${APP_ENV}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Artifacts: [P09_EVIDENCE-$GITHUB_SHA]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Severity (after waivers)" >> "$GITHUB_STEP_SUMMARY"
+          cat EVIDENCE/P09/sca_summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload SBOM/SCA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: P09_EVIDENCE-${{ github.sha }}
+          path: |
+            EVIDENCE/P09/sbom.json
+            EVIDENCE/P09/sca_report.json
+            EVIDENCE/P09/sca_report.filtered.json
+            EVIDENCE/P09/sca_summary.md
+            EVIDENCE/P09/waivers.json
+            EVIDENCE/P09/sbom.meta.json
+            EVIDENCE/P09/README.md
+            EVIDENCE/P09/*-${{ github.sha }}.*

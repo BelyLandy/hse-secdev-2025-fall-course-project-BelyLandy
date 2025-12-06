@@ -1,0 +1,20 @@
+policy:
+  owner: "BelyLandy"
+  updated_at: "2025-11-28T21:00:00Z"
+  rationale: "Waivers используются точечно, с дедлайном пересмотра и ссылкой на Issue/PR."
+
+severity_guidelines:
+  critical: "фикс или waiver <= 7 дней"
+  high: "фикс или waiver <= 7 дней"
+  medium: "план фикса или waiver <= 14 дней"
+  low: "best-effort"
+
+waivers:
+  - cve: "CVE-2025-7709"
+    package: "libsqlite3-0"
+    reason: >
+      Medium в базовом образе; библиотека используется транзитивно (через Python sqlite3).
+      Риск для сервиса низкий. Ждём апдейт базового образа.
+    issue: "https://github.com/BelyLandy/Devyatov-hse-secdev-2025-course-project/issues/123"
+    until: "2025-12-31T23:59:59Z"
+    envs: ["dev", "stage"]

@@ -404,3 +404,113 @@ curl -i -H "X-User-Id: u1" "http://127.0.0.1:8000/api/v1/items?label=xxxxxxxxxxx
 curl -i http://127.0.0.1:8000/items/123
 curl -s -X POST "http://127.0.0.1:8000/items?name=test"
 ```
+
+---
+
+## P09
+
+### Что делает workflow
+
+* Генерирует **SBOM** (Syft, формат CycloneDX JSON) из исходников репозитория.
+* Запускает **SCA** (Grype) по SBOM.
+* Применяет **waivers** из `policy/waivers.yml` и формирует сводку.
+* Сохраняет артефакты в GitHub Actions:
+  `EVIDENCE/P09/sbom.json`, `EVIDENCE/P09/sca_report.json`, `EVIDENCE/P09/sca_report.filtered.json`, `EVIDENCE/P09/sca_summary.md`, `EVIDENCE/P09/waivers.json`.
+
+Триггеры -`push`, `pull_request` по релевантным путям и `workflow_dispatch`.
+
+---
+
+### Структура артефактов
+
+```
+EVIDENCE/
+  P09/
+    sbom.json
+    sca_report.json
+    sca_report.filtered.json
+    sca_summary.md
+    waivers.json # policy/waivers.yml, сконвертированный в JSON
+```
+
+---
+
+### waivers
+
+Файл `policy/waivers.yml`.
+
+Пример:
+
+```yaml
+policy:
+  owner: "BelyLandy"
+  updated_at: "2025-11-28T21:00:00Z"
+  rationale: "Waivers используются точечно, с дедлайном пересмотра и ссылкой на Issue/PR."
+
+severity_guidelines:
+  critical: "фикс или waiver <= 7 дней"
+  high: "фикс или waiver <= 7 дней"
+  medium: "план фикса или waiver <= 14 дней"
+  low: "best-effort"
+
+waivers:
+  - cve: "CVE-2025-7709"
+    package: "libsqlite3-0"
+    reason: >
+      Medium в базовом образе; библиотека используется транзитивно (через Python sqlite3).
+      Риск для сервиса низкий. Ждём апдейт базового образа.
+    issue: "https://github.com/BelyLandy/Devyatov-hse-secdev-2025-course-project/issues/123"
+    until: "2025-12-31T23:59:59Z"
+    envs: ["dev", "stage"]
+```
+
+---
+
+### Как запустить локально
+
+#### Linux/macOS
+
+```bash
+mkdir -p EVIDENCE/P09
+
+export SYFT_VERSION="0.104.0"
+export GRYPE_VERSION="0.79.0"
+
+# SBOM
+docker run --rm -v "$PWD:/work" -w /work anchore/syft:v${SYFT_VERSION} \
+  . -o cyclonedx-json=EVIDENCE/P09/sbom.json
+
+# SCA
+docker run --rm -v "$PWD:/work" -w /work anchore/grype:v${GRYPE_VERSION} \
+  sbom:/work/EVIDENCE/P09/sbom.json -o json > EVIDENCE/P09/sca_report.json || true
+```
+
+#### Windows (Git Bash)
+
+```bash
+mkdir -p EVIDENCE/P09
+
+export SYFT_VERSION="0.104.0"
+export GRYPE_VERSION="0.79.0"
+PWD_WIN="$(pwd -W)"
+
+# SBOM
+MSYS_NO_PATHCONV=1 docker run --rm \
+  -v "$PWD_WIN:/work" -w /work anchore/syft:v${SYFT_VERSION} \
+  . -o cyclonedx-json=EVIDENCE/P09/sbom.json
+
+# SCA
+MSYS_NO_PATHCONV=1 docker run --rm \
+  -v "$PWD_WIN:/work" -w /work anchore/grype:v${GRYPE_VERSION} \
+  sbom:/work/EVIDENCE/P09/sbom.json -o json > EVIDENCE/P09/sca_report.json || true
+```
+
+---
+
+### Как посмотреть результаты в CI
+
+1. Откройте вкладку **Actions**, ищем последний успешный запуск по ветке.
+2. Внизу страницы в блоке **Artifacts**. Скачать `P09_EVIDENCE-<>`.
+3. Внутри файлы из `EVIDENCE/P09/`
+
+---
