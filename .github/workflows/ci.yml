@@ -85,7 +85,7 @@ jobs:
       - name: Pytest (JUnit + coverage)
         shell: bash
         env:
-          DB_PATH:    ${{ vars.DB_PATH }}
+          DB_PATH: ./app.db
           LOG_LEVEL:  ${{ vars.LOG_LEVEL }}
           APP_NAME:   ${{ vars.APP_NAME }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
