@@ -1,0 +1,13 @@
+title = "Project gitleaks config"
+
+[allowlist]
+description = "Ignore generated/caches, known test fixture"
+paths = [
+  '''^\.git/''',
+  '''^\.venv/''',
+  '''^__pycache__/''',
+  '''^EVIDENCE/''',
+
+  '''^tests/fixtures/dummy_jwt\.txt$''',
+]
+redact = true
