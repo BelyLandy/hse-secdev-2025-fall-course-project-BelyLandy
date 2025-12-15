@@ -1,5 +1,6 @@
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+
 class SecurityHeadersMiddleware:
     def __init__(self, app: ASGIApp):
         self.app = app
@@ -8,13 +9,16 @@ class SecurityHeadersMiddleware:
         async def send_wrapper(message):
             if message["type"] == "http.response.start":
                 headers = dict(message.get("headers", []))
+
                 def set_hdr(name: str, value: str):
                     headers[name.lower().encode()] = value.encode()
 
                 # Clickjacking / Permissions-Policy.
                 set_hdr("x-frame-options", "DENY")
                 set_hdr("x-content-type-options", "nosniff")
-                set_hdr("permissions-policy", "geolocation=(), microphone=(), camera=()")
+                set_hdr(
+                    "permissions-policy", "geolocation=(), microphone=(), camera=()"
+                )
 
                 # Site Isolation.
                 set_hdr("cross-origin-opener-policy", "same-origin")
@@ -29,14 +33,11 @@ class SecurityHeadersMiddleware:
                     "script-src 'self' https://cdn.jsdelivr.net; "
                     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
                     "connect-src 'self'; "
-                    "frame-ancestors 'none';"
+                    "frame-ancestors 'none';",
                 )
 
                 set_hdr("cache-control", "no-store")
-                message = {
-                    **message,
-                    "headers": [(k, v) for k, v in headers.items()]
-                }
+                message = {**message, "headers": [(k, v) for k, v in headers.items()]}
             await send(message)
 
         await self.app(scope, receive, send_wrapper)
