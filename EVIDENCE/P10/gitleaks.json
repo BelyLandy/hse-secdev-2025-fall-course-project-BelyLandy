@@ -1,0 +1,42 @@
+[
+ {
+  "Description": "Demo: Private key block",
+  "StartLine": 1,
+  "EndLine": 6,
+  "StartColumn": 1,
+  "EndColumn": 26,
+  "Match": "-----BEGIN PRIVATE KEY-----\nMIIBVwIBADANBgkqhkiG9w0BAQEFAASCAT8wggE7AgEAAkEAu0Yk9kKQ7J8yJ5jp\nZ1Wkq9m3bGq2C8o7mQy1H4f9fQ0mQjY3w1A0Tt7zj3zJX3pQ2fzY7h5q3fQ6L2lK\nQwIDAQABAkEAiP1KQk9bQ0b5J1u1Zx5mP3r6YQ3mV7j2iO7u0d+z0jJk9k2pQw9e\n1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6Z7a8b9c0\n-----END PRIVATE KEY-----",
+  "Secret": "-----BEGIN PRIVATE KEY-----\nMIIBVwIBADANBgkqhkiG9w0BAQEFAASCAT8wggE7AgEAAkEAu0Yk9kKQ7J8yJ5jp\nZ1Wkq9m3bGq2C8o7mQy1H4f9fQ0mQjY3w1A0Tt7zj3zJX3pQ2fzY7h5q3fQ6L2lK\nQwIDAQABAkEAiP1KQk9bQ0b5J1u1Zx5mP3r6YQ3mV7j2iO7u0d+z0jJk9k2pQw9e\n1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6Z7a8b9c0\n-----END PRIVATE KEY-----",
+  "File": "/repo/tests/fixtures/fake_private_key.pem",
+  "SymlinkFile": "",
+  "Commit": "",
+  "Entropy": 5.583235,
+  "Author": "",
+  "Email": "",
+  "Date": "",
+  "Message": "",
+  "Tags": [],
+  "RuleID": "demo-private-key",
+  "Fingerprint": "/repo/tests/fixtures/fake_private_key.pem:demo-private-key:1"
+ },
+ {
+  "Description": "Demo: Slack token",
+  "StartLine": 2,
+  "EndLine": 2,
+  "StartColumn": 2,
+  "EndColumn": 56,
+  "Match": "xoxb-111111111111-222222222222-aaaaaaaaaaaaaaaaaaaaaaaa",
+  "Secret": "xoxb-111111111111-222222222222-aaaaaaaaaaaaaaaaaaaaaaaa",
+  "File": "/repo/tests/fixtures/slack_demo.txt",
+  "SymlinkFile": "",
+  "Commit": "",
+  "Entropy": 2.0934854,
+  "Author": "",
+  "Email": "",
+  "Date": "",
+  "Message": "",
+  "Tags": [],
+  "RuleID": "demo-slack-token",
+  "Fingerprint": "/repo/tests/fixtures/slack_demo.txt:demo-slack-token:2"
+ }
+]

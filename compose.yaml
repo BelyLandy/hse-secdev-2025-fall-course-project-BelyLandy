@@ -5,14 +5,16 @@ services:
     image: idea-backlog:local
     container_name: idea
 
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
     ports:
       - "8000:8000"
 
     environment:
+      - APP_ENV=ci
       - DB_PATH=/data/app.db
 
     user: "999:999"
-
     read_only: true
 
     volumes:
@@ -26,7 +28,6 @@ services:
       - no-new-privileges:true
       - seccomp=./docker/seccomp-default.json
       - apparmor:docker-default
-      - label:type:container_t
 
     cap_drop:
       - ALL
@@ -34,7 +35,14 @@ services:
     ulimits:
       nofile: 4096
 
+    init: true
     restart: unless-stopped
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    networks:
+      - idea-dast-net
 
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request, socket; socket.setdefaulttimeout(2); urllib.request.urlopen('http://127.0.0.1:8000/health')"]
@@ -43,5 +51,31 @@ services:
       start_period: 10s
       retries: 3
 
+  zap:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    container_name: zap-baseline
+    profiles: [dast]
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - idea-dast-net
+    volumes:
+      - ./EVIDENCE/P11:/zap/wrk
+    command:
+      - zap-baseline.py
+      - -t
+      - http://idea:8000
+      - -r
+      - zap_baseline.html
+      - -J
+      - zap_baseline.json
+      - -d
+    restart: "no"
+
 volumes:
   appdb:
+
+networks:
+  idea-dast-net:
+    name: idea-dast-net

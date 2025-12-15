@@ -1,0 +1,148 @@
+name: Security - DAST (P11, ZAP baseline)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "app/**"
+      - "src/**"
+      - "requirements*.txt"
+      - "pyproject.toml"
+      - "Dockerfile"
+      - "docker-compose*.yml"
+      - ".github/workflows/ci-p11-dast.yml"
+  pull_request:
+    paths:
+      - "app/**"
+      - "src/**"
+      - "requirements*.txt"
+      - "pyproject.toml"
+      - "Dockerfile"
+      - "docker-compose*.yml"
+      - ".github/workflows/ci-p11-dast.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dast-p11-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dast_p11:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DAST_HOST: "localhost"
+      DAST_PORT: "8000"
+      DAST_HEALTH_PRIMARY: "/health"
+      DAST_HEALTH_FALLBACK: "/healthz"
+      DAST_TARGET: "http://localhost:8000"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure evidence dirs
+        run: mkdir -p EVIDENCE/P11
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Start service (compose > docker > uvicorn)
+        run: |
+          set -e
+          MODE=""
+          if ls docker-compose*.yml >/dev/null 2>&1; then
+            MODE="compose"
+            docker compose up -d --build
+          elif [ -f Dockerfile ]; then
+            MODE="docker"
+            docker build -t app-dast:ci .
+            docker rm -f app-dast >/dev/null 2>&1 || true
+            docker run -d --name app-dast -p ${DAST_PORT}:${DAST_PORT} app-dast:ci
+          else
+            MODE="uvicorn"
+            python -m pip install --upgrade pip
+            if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+            uvicorn app.main:app --host 0.0.0.0 --port "${DAST_PORT}" &
+          fi
+          echo "${MODE}" > .p11_mode
+          timeout 120 bash -c '
+            until curl -fsS "http://localhost:'"${DAST_PORT}"'${DAST_HEALTH_PRIMARY}" \
+              || curl -fsS "http://localhost:'"${DAST_PORT}"'${DAST_HEALTH_FALLBACK}";
+            do sleep 2; done
+          '
+
+      - name: ZAP Baseline
+        env:
+          ZAP_TIME_MIN: "5"
+        run: |
+          set -e
+          EXCLUDE=$(tr '\n' '|' < .zap/exclude.txt | sed 's/|$//' || true)
+          ZAP_Z_OPTS=""
+          if [ -n "$EXCLUDE" ]; then
+            ZAP_Z_OPTS="-config spider.excludeRegex=${EXCLUDE}"
+          fi
+
+          docker run --rm --network host -v "$PWD:/zap/wrk" owasp/zap2docker-stable \
+            zap-baseline.py \
+              -t "${DAST_TARGET}" \
+              -m "${ZAP_TIME_MIN}" \
+              -r "zap_baseline.html" \
+              -J "zap_baseline.json" \
+              -x "zap_baseline.xml" \
+              -c ".zap/rules.tsv" \
+              -d \
+              -z "${ZAP_Z_OPTS}" \
+              || true
+
+          mv zap_baseline.* EVIDENCE/P11/ || true
+
+      - name: Write P11 evidence README
+        run: |
+          {
+            echo "# P11 Evidence (DAST / ZAP Baseline)"
+            echo
+            echo "- Target: ${DAST_TARGET}"
+            echo "- Health checked: \`${DAST_HEALTH_PRIMARY}\` (fallback \`${DAST_HEALTH_FALLBACK}\`)"
+            echo "- Artifacts:"
+            echo "  - zap_baseline.html"
+            echo "  - zap_baseline.json"
+            echo
+            echo "Commit: ${GITHUB_SHA}"
+            echo "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            echo "Mode: $(cat .p11_mode 2>/dev/null || echo unknown)"
+          } > EVIDENCE/P11/README.md
+
+      - name: Job summary
+        if: always()
+        run: |
+          MODE=$(cat .p11_mode 2>/dev/null || echo "unknown")
+          echo "## P11 DAST (ZAP Baseline)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Target: \`${DAST_TARGET}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Health paths: \`${DAST_HEALTH_PRIMARY}\`, \`${DAST_HEALTH_FALLBACK}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Start mode: \`${MODE}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Artifacts: \`P11_EVIDENCE-${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Stop service
+        if: always()
+        run: |
+          MODE=$(cat .p11_mode 2>/dev/null || echo "")
+          if [ "$MODE" = "compose" ]; then docker compose down -v || true; fi
+          if [ "$MODE" = "docker" ]; then docker rm -f app-dast || true; fi
+          if [ "$MODE" = "uvicorn" ]; then pkill -f "uvicorn app.main:app" || true; fi
+
+      - name: Upload P11 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: P11_EVIDENCE-${{ github.sha }}
+          path: |
+            EVIDENCE/P11/zap_baseline.html
+            EVIDENCE/P11/zap_baseline.json
+            EVIDENCE/P11/README.md
+          retention-days: 14

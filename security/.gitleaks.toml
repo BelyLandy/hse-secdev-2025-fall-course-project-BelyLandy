@@ -1,13 +1,31 @@
 title = "Project gitleaks config"
 
-[allowlist]
-description = "Ignore generated/caches, known test fixture"
-paths = [
-  '''^\.git/''',
-  '''^\.venv/''',
-  '''^__pycache__/''',
-  '''^EVIDENCE/''',
+extends = "github://zricethezav/gitleaks/v8.18.4/config/gitleaks.toml"
 
-  '''^tests/fixtures/dummy_jwt\.txt$''',
+[[rules]]
+id = "demo-private-key"
+description = "Demo: Private key block"
+regex = '''-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[A-Za-z0-9+/=\r\n]+-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'''
+keywords = ["PRIVATE KEY"]
+
+[[rules]]
+id = "demo-slack-token"
+description = "Demo: Slack token"
+regex = '''xox[baprs]-[0-9A-Za-z-]{20,}'''
+keywords = ["xoxb-","xoxa-","xoxp-","xoxr-","xoxs-"]
+
+[allowlist]
+description = "Ignore caches/artifacts and one known test fixture (dummy_jwt.txt)"
+paths = [
+  "^\\.git/",
+  "^\\.venv/",
+  "^__pycache__/",
+  "^EVIDENCE/",
+  "^reports?/",
+  "^coverage/",
+  "^tests/fixtures/dummy_jwt\\.txt$"
 ]
+
+regexes = ["GITLEAKS-ALLOWED"]
+
 redact = true
