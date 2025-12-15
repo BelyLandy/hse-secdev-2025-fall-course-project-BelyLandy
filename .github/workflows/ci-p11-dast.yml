@@ -51,27 +51,30 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Ensure evidence dirs and ZAP defaults
+        shell: bash
         run: |
-          set -e
-          mkdir -p EVIDENCE/P11 .zap
+          set -euo pipefail
+          mkdir -p EVIDENCE/P11 .zap security/zap
+
           if [ ! -f .zap/rules.tsv ]; then
-            cat > .zap/rules.tsv << 'EOF'
-
-10049	WARN
-
-10035	WARN
-
-10038	WARN
-EOF
+            printf '%s\n' \
+              '# zap-baseline rule configuration file' \
+              '# ruleId<TAB>threshold<TAB>optional message (tab-separated)' \
+              '10017\tWARN\tallow external JS on /docs' \
+              '10020\tWARN' \
+              '10021\tWARN' \
+              '10038\tWARN' \
+              '10049\tWARN' \
+              '10063\tWARN' \
+              '90003\tWARN' \
+              '90004\tWARN' \
+              '10116\tIGNORE\tsuppress "ZAP is Out of Date"' \
+              '10035\tWARN' \
+              > .zap/rules.tsv
           fi
-          if [ ! -f .zap/exclude.txt ]; then
 
-            : > .zap/exclude.txt
-          fi
-          if [ ! -f security/zap/baseline.conf ]; then
-            mkdir -p security/zap
-            printf '' > security/zap/baseline.conf
-          fi
+          [ -f .zap/exclude.txt ] || : > .zap/exclude.txt
+          [ -f security/zap/baseline.conf ] || : > security/zap/baseline.conf
 
       - name: Setup Python (fallback path)
         uses: actions/setup-python@v5
