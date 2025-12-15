@@ -9,8 +9,10 @@ from app.utils.rfc7807 import problem
 
 from .api.routers import items as items_router
 from .db import Base, engine, session_scope
+from .security_headers import SecurityHeadersMiddleware
 
 app = FastAPI(title="Idea Backlog (MVP)", version="0.1.0")
+app.add_middleware(SecurityHeadersMiddleware)
 
 Base.metadata.create_all(bind=engine)
 
