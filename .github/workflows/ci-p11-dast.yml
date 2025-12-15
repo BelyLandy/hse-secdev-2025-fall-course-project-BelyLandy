@@ -283,7 +283,7 @@ jobs:
 
             let alerts = 0;
             try {
-              const j = JSON.parse(fs.readFileSync('evidence/zap_baseline.json','utf8'));
+              const j = JSON.parse(fs.readFileSync('EVIDENCE/P11/zap_baseline.json','utf8'));
               for (const s of (j.site || [])) {
                 for (const a of (s.alerts || [])) {
                   if (a.riskcode && a.riskcode !== '0') alerts++;
