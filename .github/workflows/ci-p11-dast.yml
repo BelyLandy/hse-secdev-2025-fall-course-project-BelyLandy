@@ -2,6 +2,16 @@ name: Security - DAST (P11, ZAP baseline)
 
 on:
   workflow_dispatch:
+    inputs:
+      target_url:
+        description: "Override target URL (default http://localhost:8000/docs)"
+        type: string
+        required: false
+      zap_time_min:
+        description: "ZAP baseline time budget (minutes)"
+        type: number
+        required: false
+        default: 3
   push:
     paths:
       - "app/**"
@@ -25,10 +35,9 @@ on:
       - "security/zap/**"
       - ".github/workflows/ci-p11-dast.yml"
 
+# минимальные permissions по умолчанию
 permissions:
   contents: read
-  pull-requests: write
-  issues: write
 
 concurrency:
   group: dast-p11-${{ github.workflow }}-${{ github.ref }}
@@ -36,8 +45,27 @@ concurrency:
 
 jobs:
   dast_p11:
+    name: Run ZAP baseline
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # никаких лишних разрешений в основном job
+    permissions:
+      contents: read
+    # лёгкое ограничение запуска:
+    # - на push — всегда
+    # - на PR — не для draft; если установлена repo variable REQUIRE_DAST_LABEL=true,
+    #   то только когда на PR есть метка run-dast.
+    if: >-
+      ${{
+        github.event_name != 'pull_request' ||
+        (
+          !github.event.pull_request.draft &&
+          (
+            vars.REQUIRE_DAST_LABEL != 'true' ||
+            contains(github.event.pull_request.labels.*.name, 'run-dast')
+          )
+        )
+      }}
 
     env:
       DAST_HOST: "localhost"
@@ -45,8 +73,9 @@ jobs:
       DAST_HEALTH_PRIMARY: "/docs"
       DAST_HEALTH_SECOND: "/health"
       DAST_HEALTH_FALLBACK: "/healthz"
-      DAST_TARGET: "http://localhost:8000/docs"
-      ZAP_TIME_MIN: "3"
+      # из workflow_dispatch можно переопределить target и время
+      DAST_TARGET: ${{ inputs.target_url != '' && inputs.target_url || 'http://localhost:8000/docs' }}
+      ZAP_TIME_MIN: ${{ inputs.zap_time_min != '' && inputs.zap_time_min || '3' }}
 
     steps:
       - name: Checkout
@@ -80,8 +109,7 @@ jobs:
 
       - name: Make ZAP config writeable for container
         shell: bash
-        run: |
-          chmod -R a+rwX .zap security/zap EVIDENCE || true
+        run: chmod -R a+rwX .zap security/zap EVIDENCE || true
 
       - name: Normalize CRLF in .zap files (safety)
         shell: bash
@@ -90,7 +118,6 @@ jobs:
           for f in .zap/rules.tsv .zap/exclude.txt; do
             [ -f "$f" ] && sed -i 's/\r$//' "$f" || true
           done
-
           awk -F'\t' 'BEGIN{e=0} /^[[:space:]]*#/ || NF==0 {next} NF<3{print "bad line:" NR":" $0; e=1} END{exit e}' .zap/rules.tsv || {
             echo "::error::.zap/rules.tsv has malformed lines"; exit 1; }
 
@@ -213,57 +240,6 @@ jobs:
             echo "- Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: PR comment with short summary
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        continue-on-error: true
-        with:
-          script: |
-            const fs = require('fs');
-
-            let alerts = 0;
-            try {
-              const raw = fs.readFileSync('EVIDENCE/P11/zap_baseline.json', 'utf8');
-              const j = JSON.parse(raw);
-              for (const s of (j.site || [])) {
-                for (const a of (s.alerts || [])) {
-                  if (a.riskcode && a.riskcode !== '0') alerts++;
-                }
-              }
-            } catch (e) {
-              core.warning(`Cannot read EVIDENCE/P11/zap_baseline.json: ${e.message}`);
-            }
-
-            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
-            const body = [
-              '<!-- p11-dast-zap -->',
-              '### P11 DAST (ZAP Baseline)',
-              `- Target: \`${process.env.DAST_TARGET || 'n/a'}\``,
-              `- Non-informational alerts: **${alerts}**`,
-              `- Artifact: **P11_EVIDENCE-${process.env.GITHUB_SHA}** (HTML/JSON/XML + app.log)`,
-              `[View job run](${runUrl})`
-            ].join('\n');
-
-            const { owner, repo } = context.repo;
-            const issue_number = context.issue.number;
-
-            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
-            const prev = comments.find(c => c.body && c.body.includes('<!-- p11-dast-zap -->'));
-            if (prev) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: prev.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number, body });
-            }
-
-      - name: Stop service
-        if: always()
-        shell: bash
-        run: |
-          MODE=$(cat .p11_mode 2>/dev/null || echo "")
-          if [ "$MODE" = "compose" ]; then docker compose down -v || true; fi
-          if [ "$MODE" = "docker" ]; then docker rm -f app-dast || true; fi
-          if [ "$MODE" = "uvicorn" ]; then pkill -f "uvicorn app.main:app" || true; fi
-
       - name: Upload P11 evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -278,3 +254,68 @@ jobs:
             .zap/rules.tsv
             .zap/exclude.txt
           retention-days: 14
+
+      - name: Stop service
+        if: always()
+        shell: bash
+        run: |
+          MODE=$(cat .p11_mode 2>/dev/null || echo "")
+          if [ "$MODE" = "compose" ]; then docker compose down -v || true; fi
+          if [ "$MODE" = "docker" ]; then docker rm -f app-dast || true; fi
+          if [ "$MODE" = "uvicorn" ]; then pkill -f "uvicorn app.main:app" || true; fi
+
+  pr_comment:
+    name: PR comment with short summary
+    needs: dast_p11
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+    # повышенные permissions — только в job для комментария
+    permissions:
+      pull-requests: write
+      issues: write
+      contents: read
+
+    steps:
+      - name: Download evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: P11_EVIDENCE-${{ github.sha }}
+          path: evidence
+
+      - name: Add/update PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            let alerts = 0;
+            try {
+              const j = JSON.parse(fs.readFileSync('evidence/zap_baseline.json','utf8'));
+              for (const s of (j.site || [])) {
+                for (const a of (s.alerts || [])) {
+                  if (a.riskcode && a.riskcode !== '0') alerts++;
+                }
+              }
+            } catch (e) {
+              core.warning(`Cannot read zap report: ${e.message}`);
+            }
+
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            const body = [
+              '<!-- p11-dast-zap -->',
+              '### P11 DAST (ZAP Baseline)',
+              `- Target: \`${process.env.DAST_TARGET || 'n/a'}\``,
+              `- Non-informational alerts: **${alerts}**`,
+              `- Artifact: **P11_EVIDENCE-${process.env.GITHUB_SHA}** (HTML/JSON/XML + app.log)`,
+              `[View job run](${runUrl})`
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const prev = comments.find(c => c.body && c.body.includes('<!-- p11-dast-zap -->'));
+            if (prev) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: prev.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
