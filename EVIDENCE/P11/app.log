@@ -1,0 +1,10 @@
+idea  | INFO:     Started server process [7]
+idea  | INFO:     Waiting for application startup.
+idea  | INFO:     Application startup complete.
+idea  | INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+idea  | INFO:     172.18.0.1:52426 - "GET /health HTTP/1.1" 200 OK
+idea  | INFO:     127.0.0.1:60860 - "GET /health HTTP/1.1" 200 OK
+idea  | INFO:     172.18.0.1:41028 - "GET /docs HTTP/1.1" 200 OK
+idea  | INFO:     172.18.0.1:41040 - "GET /robots.txt HTTP/1.1" 404 Not Found
+idea  | INFO:     172.18.0.1:41046 - "GET /sitemap.xml HTTP/1.1" 404 Not Found
+idea  | INFO:     172.18.0.1:41028 - "GET / HTTP/1.1" 404 Not Found

@@ -1,0 +1,111 @@
+<?xml version="1.0"?>
+<OWASPZAPReport programName="ZAP" version="2.16.1" generated="Mon, 15 Dec 2025 19:20:11" created="2025-12-15T19:20:11.385459561Z">
+	
+		<site name="http://host.docker.internal:8000" host="host.docker.internal" port="8000" ssl="false">
+			<alerts>
+				
+					<alertitem>
+						<pluginid>10017</pluginid>
+						<alertRef>10017</alertRef>
+						<alert>Cross-Domain JavaScript Source File Inclusion</alert>
+						<name>Cross-Domain JavaScript Source File Inclusion</name>
+						<riskcode>1</riskcode>
+						<confidence>2</confidence>
+						<riskdesc>Low (Medium)</riskdesc>
+						<confidencedesc>Medium</confidencedesc>
+						<desc>&lt;p&gt;The page includes one or more script files from a third-party domain.&lt;/p&gt;</desc>
+						<instances>
+							
+								<instance>
+									<uri>http://host.docker.internal:8000/docs</uri>
+									<nodeName></nodeName>
+									<method>GET</method>
+									<param>https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js</param>
+									<attack></attack>
+									<evidence>&lt;script src=&quot;https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js&quot;&gt;&lt;/script&gt;</evidence>
+									<otherinfo></otherinfo>
+								</instance>
+							
+						</instances>
+						<count>1</count>
+						<systemic>false</systemic>
+						<solution>&lt;p&gt;Ensure JavaScript source files are loaded from only trusted sources, and the sources can&apos;t be controlled by end users of the application.&lt;/p&gt;</solution>
+						<otherinfo></otherinfo>
+						<reference></reference>
+						<cweid>829</cweid>
+						<wascid>15</wascid>
+						<sourceid>1</sourceid>
+					</alertitem>
+				
+				
+					<alertitem>
+						<pluginid>10116</pluginid>
+						<alertRef>10116</alertRef>
+						<alert>ZAP is Out of Date</alert>
+						<name>ZAP is Out of Date</name>
+						<riskcode>1</riskcode>
+						<confidence>3</confidence>
+						<riskdesc>Low (High)</riskdesc>
+						<confidencedesc>High</confidencedesc>
+						<desc>&lt;p&gt;The version of ZAP you are using to test your app is out of date and is no longer being updated.&lt;/p&gt;&lt;p&gt;The risk level is set based on how out of date your ZAP version is.&lt;/p&gt;</desc>
+						<instances>
+							
+								<instance>
+									<uri>http://host.docker.internal:8000/docs</uri>
+									<nodeName></nodeName>
+									<method>GET</method>
+									<param></param>
+									<attack></attack>
+									<evidence></evidence>
+									<otherinfo>The latest version of ZAP is 2.17.0</otherinfo>
+								</instance>
+							
+						</instances>
+						<count>1</count>
+						<systemic>false</systemic>
+						<solution>&lt;p&gt;Download the latest version of ZAP from https://www.zaproxy.org/download/ and install it.&lt;/p&gt;</solution>
+						<otherinfo>&lt;p&gt;The latest version of ZAP is 2.17.0&lt;/p&gt;</otherinfo>
+						<reference>&lt;p&gt;https://www.zaproxy.org/download/&lt;/p&gt;</reference>
+						<cweid>1104</cweid>
+						<wascid>45</wascid>
+						<sourceid>1</sourceid>
+					</alertitem>
+				
+				
+					<alertitem>
+						<pluginid>10109</pluginid>
+						<alertRef>10109</alertRef>
+						<alert>Modern Web Application</alert>
+						<name>Modern Web Application</name>
+						<riskcode>0</riskcode>
+						<confidence>2</confidence>
+						<riskdesc>Informational (Medium)</riskdesc>
+						<confidencedesc>Medium</confidencedesc>
+						<desc>&lt;p&gt;The application appears to be a modern web application. If you need to explore it automatically then the Ajax Spider may well be more effective than the standard one.&lt;/p&gt;</desc>
+						<instances>
+							
+								<instance>
+									<uri>http://host.docker.internal:8000/docs</uri>
+									<nodeName></nodeName>
+									<method>GET</method>
+									<param></param>
+									<attack></attack>
+									<evidence>&lt;script src=&quot;https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js&quot;&gt;&lt;/script&gt;</evidence>
+									<otherinfo>No links have been found while there are scripts, which is an indication that this is a modern web application.</otherinfo>
+								</instance>
+							
+						</instances>
+						<count>1</count>
+						<systemic>false</systemic>
+						<solution>&lt;p&gt;This is an informational alert and so no changes are required.&lt;/p&gt;</solution>
+						<otherinfo>&lt;p&gt;No links have been found while there are scripts, which is an indication that this is a modern web application.&lt;/p&gt;</otherinfo>
+						<reference></reference>
+						<cweid>-1</cweid>
+						<wascid>-1</wascid>
+						<sourceid>1</sourceid>
+					</alertitem>
+				
+			</alerts>
+		</site>
+	
+</OWASPZAPReport>
