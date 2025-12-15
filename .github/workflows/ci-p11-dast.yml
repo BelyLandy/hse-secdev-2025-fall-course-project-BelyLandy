@@ -28,6 +28,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 concurrency:
   group: dast-p11-${{ github.workflow }}-${{ github.ref }}
@@ -75,8 +76,12 @@ jobs:
           fi
 
           [ -f .zap/exclude.txt ] || : > .zap/exclude.txt
-
           [ -f security/zap/baseline.conf ] || : > security/zap/baseline.conf
+
+      - name: Make ZAP config writeable for container
+        shell: bash
+        run: |
+          chmod -R a+rwX .zap security/zap EVIDENCE || true
 
       - name: Normalize CRLF in .zap files (safety)
         shell: bash
@@ -190,6 +195,7 @@ jobs:
           } > EVIDENCE/P11/README.md
 
       - name: Install jq for summary
+        shell: bash
         run: sudo apt-get update -y && sudo apt-get install -y jq
 
       - name: Job summary
@@ -198,48 +204,55 @@ jobs:
         run: |
           MODE=$(cat .p11_mode 2>/dev/null || echo "unknown")
           ALRTS=$(jq -r '[.site[]?.alerts[]? | select(.riskcode!="0")] | length' EVIDENCE/P11/zap_baseline.json 2>/dev/null || echo 0)
-          echo "## P11 DAST (ZAP Baseline)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Target: \`${DAST_TARGET}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Start mode: \`${MODE}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Non-informational alerts: \`${ALRTS}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Artifacts: \`P11_EVIDENCE-${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## P11 DAST (ZAP Baseline)"
+            echo "- Target: \`${DAST_TARGET}\`"
+            echo "- Start mode: \`${MODE}\`"
+            echo "- Non-informational alerts: \`${ALRTS}\`"
+            echo "- Artifacts: \`P11_EVIDENCE-${GITHUB_SHA}\`"
+            echo "- Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: PR comment with short summary
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
+        continue-on-error: true
         with:
           script: |
-            const core = require('@actions/core');
-            const {context, github} = require('@actions/github');
             const fs = require('fs');
 
             let alerts = 0;
             try {
-              const j = JSON.parse(fs.readFileSync('EVIDENCE/P11/zap_baseline.json','utf8'));
-              alerts = (j.site||[])
-                .flatMap(s => (s.alerts||[]))
-                .filter(a => a.riskcode !== '0').length;
-            } catch(e){}
+              const raw = fs.readFileSync('EVIDENCE/P11/zap_baseline.json', 'utf8');
+              const j = JSON.parse(raw);
+              for (const s of (j.site || [])) {
+                for (const a of (s.alerts || [])) {
+                  if (a.riskcode && a.riskcode !== '0') alerts++;
+                }
+              }
+            } catch (e) {
+              core.warning(`Cannot read EVIDENCE/P11/zap_baseline.json: ${e.message}`);
+            }
 
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
             const body = [
               '<!-- p11-dast-zap -->',
               '### P11 DAST (ZAP Baseline)',
-              `- Target: \`${process.env.DAST_TARGET}\``,
-              `- Non-informational alerts: \`${alerts}\``,
-              `- Run: ${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
-              `- Artifacts: \`P11_EVIDENCE-${process.env.GITHUB_SHA}\` (HTML/JSON/XML + app.log)`,
+              `- Target: \`${process.env.DAST_TARGET || 'n/a'}\``,
+              `- Non-informational alerts: **${alerts}**`,
+              `- Artifact: **P11_EVIDENCE-${process.env.GITHUB_SHA}** (HTML/JSON/XML + app.log)`,
+              `[View job run](${runUrl})`
             ].join('\n');
 
-            const {owner, repo} = context.repo;
-            const issue_number = context.payload.pull_request.number;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
 
-            const {data: comments} = await github.rest.issues.listComments({owner, repo, issue_number});
+            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
             const prev = comments.find(c => c.body && c.body.includes('<!-- p11-dast-zap -->'));
             if (prev) {
-              await github.rest.issues.updateComment({owner, repo, comment_id: prev.id, body});
+              await github.rest.issues.updateComment({ owner, repo, comment_id: prev.id, body });
             } else {
-              await github.rest.issues.createComment({owner, repo, issue_number, body});
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
 
       - name: Stop service
