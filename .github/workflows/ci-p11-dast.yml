@@ -35,7 +35,6 @@ on:
       - "security/zap/**"
       - ".github/workflows/ci-p11-dast.yml"
 
-# минимальные permissions по умолчанию
 permissions:
   contents: read
 
@@ -48,13 +47,9 @@ jobs:
     name: Run ZAP baseline
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # никаких лишних разрешений в основном job
     permissions:
       contents: read
-    # лёгкое ограничение запуска:
-    # - на push — всегда
-    # - на PR — не для draft; если установлена repo variable REQUIRE_DAST_LABEL=true,
-    #   то только когда на PR есть метка run-dast.
+
     if: >-
       ${{
         github.event_name != 'pull_request' ||
@@ -73,7 +68,6 @@ jobs:
       DAST_HEALTH_PRIMARY: "/docs"
       DAST_HEALTH_SECOND: "/health"
       DAST_HEALTH_FALLBACK: "/healthz"
-      # из workflow_dispatch можно переопределить target и время
       DAST_TARGET: ${{ inputs.target_url != '' && inputs.target_url || 'http://localhost:8000/docs' }}
       ZAP_TIME_MIN: ${{ inputs.zap_time_min != '' && inputs.zap_time_min || '3' }}
 
@@ -269,7 +263,6 @@ jobs:
     needs: dast_p11
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
-    # повышенные permissions — только в job для комментария
     permissions:
       pull-requests: write
       issues: write
