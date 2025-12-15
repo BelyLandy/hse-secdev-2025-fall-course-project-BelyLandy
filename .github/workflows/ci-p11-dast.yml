@@ -280,13 +280,24 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            const core = require('@actions/core');
 
-            let alerts = 0;
+            const path = 'evidence/EVIDENCE/P11/zap_baseline.json'; // <-- правильный путь после download-artifact
+            let alerts = 0, high = 0, med = 0, low = 0, target = 'n/a';
+
             try {
-              const j = JSON.parse(fs.readFileSync('EVIDENCE/P11/zap_baseline.json','utf8'));
-              for (const s of (j.site || [])) {
+              const j = JSON.parse(fs.readFileSync(path,'utf8'));
+              const sites = j.site || [];
+              if (sites[0]?.['@name']) target = sites[0]['@name'];
+              for (const s of sites) {
                 for (const a of (s.alerts || [])) {
-                  if (a.riskcode && a.riskcode !== '0') alerts++;
+                  const rc = a.riskcode;
+                  if (rc && rc !== '0') {
+                    alerts++;
+                    if (rc === '3') high++;
+                    else if (rc === '2') med++;
+                    else low++;
+                  }
                 }
               }
             } catch (e) {
@@ -294,17 +305,19 @@ jobs:
             }
 
             const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            const artifactName = `P11_EVIDENCE-${process.env.GITHUB_SHA}`;
             const body = [
               '<!-- p11-dast-zap -->',
               '### P11 DAST (ZAP Baseline)',
-              `- Target: \`${process.env.DAST_TARGET || 'n/a'}\``,
-              `- Non-informational alerts: **${alerts}**`,
-              `- Artifact: **P11_EVIDENCE-${process.env.GITHUB_SHA}** (HTML/JSON/XML + app.log)`,
+              `- Target: \`${target}\``,
+              `- Alerts (non-info): **${alerts}**  — High: ${high}, Medium: ${med}, Low: ${low}`,
+              `- Artifact: **${artifactName}** (HTML/JSON/XML + app.log)`,
               `[View job run](${runUrl})`
             ].join('\n');
 
             const { owner, repo } = context.repo;
             const issue_number = context.issue.number;
+
             const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
             const prev = comments.find(c => c.body && c.body.includes('<!-- p11-dast-zap -->'));
             if (prev) {
