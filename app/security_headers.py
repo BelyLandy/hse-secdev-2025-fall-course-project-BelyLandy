@@ -13,31 +13,35 @@ class SecurityHeadersMiddleware:
                 def set_hdr(name: str, value: str):
                     headers[name.lower().encode()] = value.encode()
 
-                # Clickjacking / Permissions-Policy.
+                # Clickjacking / MIME sniffing / Permissions Policy
                 set_hdr("x-frame-options", "DENY")
                 set_hdr("x-content-type-options", "nosniff")
                 set_hdr(
                     "permissions-policy", "geolocation=(), microphone=(), camera=()"
                 )
 
-                # Site Isolation.
+                # Site Isolation
                 set_hdr("cross-origin-opener-policy", "same-origin")
                 set_hdr("cross-origin-embedder-policy", "require-corp")
                 set_hdr("cross-origin-resource-policy", "same-origin")
 
-                # CSP.
-                set_hdr(
-                    "content-security-policy",
+                # Content Security Policy
+                csp = (
                     "default-src 'self'; "
                     "img-src 'self' data:; "
                     "script-src 'self' https://cdn.jsdelivr.net; "
-                    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                    "style-src 'self' https://cdn.jsdelivr.net; "
                     "connect-src 'self'; "
-                    "frame-ancestors 'none';",
+                    "frame-ancestors 'none'; "
+                    "form-action 'self';"
                 )
+                set_hdr("content-security-policy", csp)
 
+                # Caching
                 set_hdr("cache-control", "no-store")
-                message = {**message, "headers": [(k, v) for k, v in headers.items()]}
+
+                message = {**message, "headers": list(headers.items())}
+
             await send(message)
 
         await self.app(scope, receive, send_wrapper)
