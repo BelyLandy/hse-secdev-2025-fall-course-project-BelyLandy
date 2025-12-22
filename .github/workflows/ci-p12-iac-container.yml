@@ -1,0 +1,156 @@
+name: Security - IaC & Container (P12)
+
+on:
+  workflow_dispatch:
+    inputs:
+      full_scan:
+        description: "Run full scan (includes Trivy) even on PR"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+  pull_request:
+    paths:
+      - "Dockerfile"
+      - "iac/**"
+      - "k8s/**"
+      - "deploy/**"
+      - "security/**"
+      - ".github/workflows/ci-p12-iac-container.yml"
+
+  push:
+    branches:
+      - "main"
+      - "release/**"
+    tags:
+      - "v*"
+    paths:
+      - "Dockerfile"
+      - "iac/**"
+      - "k8s/**"
+      - "deploy/**"
+      - "security/**"
+      - ".github/workflows/ci-p12-iac-container.yml"
+
+  schedule:
+    - cron: "0 3 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: app:local
+
+jobs:
+  iac_container_p12:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure evidence dirs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p EVIDENCE/P12
+
+      - name: Ensure required configs exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -f Dockerfile ] || { echo "::error::Dockerfile is missing"; exit 1; }
+          [ -f security/hadolint.yaml ] || { echo "::error::security/hadolint.yaml is missing"; exit 1; }
+          [ -f security/checkov.yaml ] || { echo "::error::security/checkov.yaml is missing"; exit 1; }
+
+      - name: Build image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build -t "${IMAGE_NAME}" .
+
+      - name: Hadolint Dockerfile (with config)
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/work" hadolint/hadolint \
+            hadolint --config /work/security/hadolint.yaml -f json /work/Dockerfile \
+            > EVIDENCE/P12/hadolint_report.json || true
+          test -s EVIDENCE/P12/hadolint_report.json || echo "[]" > EVIDENCE/P12/hadolint_report.json
+
+      - name: Checkov IaC scan (with config)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TARGET_DIR=""
+          for d in iac k8s deploy; do
+            if [ -d "$d" ]; then TARGET_DIR="$d"; break; fi
+          done
+
+          if [ -z "$TARGET_DIR" ]; then
+            echo "::error::No IaC directory found (expected iac/ or k8s/ or deploy/)"
+            exit 1
+          fi
+
+          docker run --rm -v "$PWD:/work" bridgecrew/checkov \
+            -d "/work/${TARGET_DIR}" \
+            --config-file /work/security/checkov.yaml \
+            -o json \
+            --compact \
+            --soft-fail \
+            > EVIDENCE/P12/checkov_report.json || true
+
+          test -s EVIDENCE/P12/checkov_report.json || echo "{}" > EVIDENCE/P12/checkov_report.json
+
+      - name: Trivy image scan (from saved tar)
+        if: ${{ github.event_name != 'pull_request' || github.event.inputs.full_scan == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAR="${RUNNER_TEMP}/app_local.tar"
+          docker save "${IMAGE_NAME}" -o "${TAR}"
+
+          mkdir -p "${RUNNER_TEMP}/trivy-cache"
+
+          TRIVY_CFG=""
+          if [ -f "security/trivy.yaml" ]; then
+            TRIVY_CFG="--config /work/security/trivy.yaml"
+          fi
+
+          docker run --rm \
+            -v "$PWD:/work" \
+            -v "${TAR}:/tmp/app.tar:ro" \
+            -v "${RUNNER_TEMP}/trivy-cache:/root/.cache/" \
+            aquasec/trivy \
+              image --input /tmp/app.tar \
+              --scanners vuln \
+              ${TRIVY_CFG} \
+              --format json \
+              --output /work/EVIDENCE/P12/trivy_report.json \
+              --timeout 10m \
+              || true
+
+          test -s EVIDENCE/P12/trivy_report.json || echo "{}" > EVIDENCE/P12/trivy_report.json
+
+      - name: Upload P12 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: P12_EVIDENCE-${{ github.sha }}
+          if-no-files-found: warn
+          path: |
+            EVIDENCE/P12
+            security/hadolint.yaml
+            security/checkov.yaml
+            security/trivy.yaml
+          retention-days: 14

@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: idea-backlog
+  namespace: idea-backlog
+  labels:
+    app: idea-backlog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: idea-backlog
+  template:
+    metadata:
+      labels:
+        app: idea-backlog
+    spec:
+      serviceAccountName: idea-backlog-sa
+      automountServiceAccountToken: false
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: app
+          image: idea-backlog:local
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 8000
+
+          env:
+            - name: APP_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: idea-backlog-config
+                  key: APP_ENV
+
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: idea-backlog-config
+                  key: LOG_LEVEL
+
+            - name: FEATURE_FLAGS
+              valueFrom:
+                configMapKeyRef:
+                  name: idea-backlog-config
+                  key: FEATURE_FLAGS
+
+            - name: DATABASE_URL_FILE
+              value: /run/secrets/idea-backlog/DATABASE_URL
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 10
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+
+            - name: secrets
+              mountPath: /run/secrets/idea-backlog
+              readOnly: true
+
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+
+        - name: secrets
+          secret:
+            secretName: idea-backlog-secrets
+            items:
+              - key: DATABASE_URL
+                path: DATABASE_URL

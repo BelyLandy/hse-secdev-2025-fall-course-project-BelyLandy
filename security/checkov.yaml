@@ -1,0 +1,9 @@
+quiet: true
+compact: true
+
+framework:
+  - kubernetes
+  - dockerfile
+
+skip-check:
+  - CKV_K8S_43
