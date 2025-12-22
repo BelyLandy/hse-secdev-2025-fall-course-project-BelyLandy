@@ -1,0 +1,21 @@
+rules:
+  - id: proj-no-os-system
+    languages: [python]
+    message: "Avoid os.system(); prefer subprocess.run([...], check=True)."
+    severity: WARNING
+    patterns:
+      - pattern: os.system(...)
+    metadata:
+      category: security
+      cwe: "CWE-78"
+
+  - id: proj-hardcoded-jwt-secret
+    languages: [python]
+    message: "Hardcoded JWT secret. Use env/secret store."
+    severity: ERROR
+    pattern-either:
+      - pattern: JWT_SECRET = "$SECRET"
+      - pattern: jwt.encode(..., "$SECRET", ...)
+    metadata:
+      category: security
+      cwe: "CWE-259"
