@@ -26,6 +26,7 @@ spec:
         seccompProfile:
           type: RuntimeDefault
 
+
       containers:
         - name: app
           image: idea-backlog:local
