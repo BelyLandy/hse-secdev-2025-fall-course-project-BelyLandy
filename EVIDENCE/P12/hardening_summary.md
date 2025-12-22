@@ -1,32 +1,38 @@
-# P12 Hardening Summary
+# P12 - Hardening Summary
 
 ## Dockerfile hardening
-- Base image pinned (no `:latest`, uses pinned tag/digest).
-- Multi-stage build (build wheels отдельно, runtime образ меньше).
-- Runs as **non-root** user (`app`) with correct permissions (`chown` for /app and /data).
-- Reduced attack surface: `pip install --no-cache-dir`, cleanup of build artifacts.
+- Базовый образ зафиксирован (без :latest, используется фиксированный tag/digest).
+- Multi-stage build: сборка wheels отдельно, runtime-образ меньше.
+- Запуск от non-root пользователя (app), корректные права (chown для /app и /data).
+- Снижение поверхности атаки:
+  - pip install --no-cache-dir
+  - очистка build artifacts.
 
 ## IaC hardening
-- Not using `default` namespace: added `Namespace idea-backlog` and set `metadata.namespace` everywhere.
-- Added `ServiceAccount` with `automountServiceAccountToken: false`.
-- Pod/container security:
-  - `runAsNonRoot: true`, fixed UID/GID, `seccompProfile: RuntimeDefault`
-  - `allowPrivilegeEscalation: false`
-  - `readOnlyRootFilesystem: true` + `emptyDir` for `/tmp`
-  - `capabilities.drop: ["ALL"]`
-  - `resources.requests/limits` set
-  - liveness/readiness probes added
-- Networking:
-  - Service is `ClusterIP` (not exposed to the world).
-  - Added `NetworkPolicy` to restrict ingress/egress (min baseline policy).
+- Не используется default namespace:
+  - добавлен Namespace idea-backlog;
+  - проставлен metadata.namespace для всех ресурсов.
+- Добавлен ServiceAccount с automountServiceAccountToken: false.
+- Безопасность Pod/Container:
+  - runAsNonRoot: true, фиксированный UID/GID, seccompProfile: RuntimeDefault
+  - allowPrivilegeEscalation: false
+  - readOnlyRootFilesystem: true, emptyDir для /tmp
+  - capabilities.drop: ["ALL"]
+  - заданы resources.requests/limits
+  - добавлены liveness/readiness probes
+- Сеть:
+  - Service = ClusterIP.
+  - Добавлен NetworkPolicy для ограничения ingress/egress.
 
-- Added `ConfigMap idea-backlog-config` and wired it via env vars (`APP_ENV`, `LOG_LEVEL`, `FEATURE_FLAGS`).
-- Added secret wiring via `secretKeyRef` (`DATABASE_URL` from `idea-backlog-secrets`).
-  - Secret manifest is intentionally not stored in repo. Must be created externally (kubectl/helm/vault).
+- Конфигурация:
+  - добавлен ConfigMap idea-backlog-config и подключён через env vars (APP_ENV, LOG_LEVEL, FEATURE_FLAGS);
+  - секреты подключены через secretKeyRef (DATABASE_URL из idea-backlog-secrets).
+    - Манифест Secret намеренно не хранится в репозитории (создаётся внешне: kubectl/helm/vault).
 
-- Hadolint: `EVIDENCE/P12/hadolint_report.json`
-- Checkov: `EVIDENCE/P12/checkov_report.json` (after fixes: `failed = 0`)
-- Trivy: `EVIDENCE/P12/trivy_report.json`
+## Reports
+- Hadolint: EVIDENCE/P12/hadolint_report.json
+- Checkov: EVIDENCE/P12/checkov_report.json (после фиксов: `failed = 0`)
+- Trivy: EVIDENCE/P12/trivy_report.json
   - High/Critical: 0/0
-  - Example fix: updated `filelock` to remove `CVE-2025-68146`
-  - Remaining medium OS CVEs tracked; mitigation is base image digest updates + rebuild + re-scan in CI.
+  - Пример фикса: обновлён filelock, чтобы убрать CVE-2025-68146
+  - Оставшиеся Medium OS CVE отслеживаются. Стратегия - обновление base image digest, rebuild, регулярный re-scan в CI (weekly schedule).
